@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mazda6-obd-v1';
+const CACHE_NAME = 'mazda6-obd-v2';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -8,6 +8,7 @@ const ASSETS_TO_CACHE = [
   './js/elm327.js',
   './js/obd.js',
   './js/dtc_db.js',
+  './js/can_sniffer.js',
   './js/gauges.js',
   './js/logger.js',
   './icons/favicon.svg',

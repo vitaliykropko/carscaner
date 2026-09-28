@@ -14,6 +14,11 @@ const BLE_SERVICES = [
   { service: '6e400001-b5a3-f393-e0a9-e50e24dcca9e', tx: '6e400002-b5a3-f393-e0a9-e50e24dcca9e', rx: '6e400003-b5a3-f393-e0a9-e50e24dcca9e' }
 ];
 
+export function isIos() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (typeof navigator.platform === 'string' && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
 export class Elm327Driver {
   constructor() {
     this.transport = null;
@@ -277,15 +282,44 @@ class WebBluetoothTransport {
 
   async open() {
     if (!('bluetooth' in navigator)) {
+      if (isIos()) {
+        throw new Error('IOS_SAFARI_BLOCKED');
+      }
       throw new Error('Web Bluetooth API не поддерживается данным браузером или ОС. Требуется Chrome/Edge с включенным Bluetooth.');
     }
 
     const optionalServices = BLE_SERVICES.map(s => s.service);
 
-    this.device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: optionalServices
-    });
+    try {
+      this.device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: optionalServices
+      });
+    } catch (e) {
+      if (e.name !== 'NotFoundError' && e.name !== 'SecurityError') {
+        // Fallback for browsers requiring explicit name prefixes or services
+        this.device = await navigator.bluetooth.requestDevice({
+          filters: [
+            { services: ['0000ffe0-0000-1000-8000-00805f9b34fb'] },
+            { services: ['0000fff0-0000-1000-8000-00805f9b34fb'] },
+            { services: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e'] },
+            { namePrefix: 'OBD' },
+            { namePrefix: 'V-LINK' },
+            { namePrefix: 'IOS-Vlink' },
+            { namePrefix: 'CLKDevices' },
+            { namePrefix: 'iCar' },
+            { namePrefix: 'ELM' },
+            { namePrefix: 'Viecar' },
+            { namePrefix: 'BT' },
+            { namePrefix: 'vgate' },
+            { namePrefix: 'Konnwei' }
+          ],
+          optionalServices: optionalServices
+        });
+      } else {
+        throw e;
+      }
+    }
 
     this.device.addEventListener('gattserverdisconnected', () => {
       if (this.onClose) this.onClose();
@@ -367,6 +401,13 @@ class SimulatorTransport {
     this.hasDtc = true; // Начальные симулируемые ошибки (P0421, P2187)
     this.time = 0;
 
+    // Состояние дверей и багажника для теста CAN
+    this.doorDriverOpen = false;
+    this.doorPassengerOpen = false;
+    this.trunkOpen = false;
+    this.isCanStreaming = false;
+    this.canStreamTimer = null;
+
     this.timer = setInterval(() => {
       this.time += 0.5;
       // Реалистичные колебания оборотов и скорости
@@ -381,13 +422,38 @@ class SimulatorTransport {
     }, 400);
   }
 
+  toggleDoor(type = 'driver') {
+    if (type === 'driver') this.doorDriverOpen = !this.doorDriverOpen;
+    if (type === 'passenger') this.doorPassengerOpen = !this.doorPassengerOpen;
+    if (type === 'trunk') this.trunkOpen = !this.trunkOpen;
+  }
+
   async open() {
     // Мгновенная готовность
     return true;
   }
 
   async write(data) {
+    // Если активен мониторинг CAN (AT MA) и пришел любой символ для остановки
+    if (this.isCanStreaming) {
+      if (this.canStreamTimer) {
+        clearInterval(this.canStreamTimer);
+        this.canStreamTimer = null;
+      }
+      this.isCanStreaming = false;
+      setTimeout(() => {
+        if (this.onData) this.onData('\r\nSTOPPED\r\n>');
+      }, 50);
+      return;
+    }
+
     const cmd = data.replace(/[\r\n]/g, '').trim().toUpperCase();
+
+    if (cmd === 'ATMA' || cmd === 'AT MA') {
+      this.isCanStreaming = true;
+      this._startCanStream();
+      return;
+    }
 
     // Небольшая имитация сетевой задержки CAN-шины (40-90мс)
     setTimeout(() => {
@@ -396,6 +462,48 @@ class SimulatorTransport {
         this.onData(resp + '\r\n>');
       }
     }, 50);
+  }
+
+  _startCanStream() {
+    let tick = 0;
+    this.canStreamTimer = setInterval(() => {
+      if (!this.isCanStreaming) return;
+      tick++;
+
+      // Вычисляем байт состояния дверей: 0x01=водитель, 0x02=пассажир, 0x10=багажник
+      let doorByteVal = 0;
+      if (this.doorDriverOpen) doorByteVal |= 0x01;
+      if (this.doorPassengerOpen) doorByteVal |= 0x02;
+      if (this.trunkOpen) doorByteVal |= 0x10;
+      const doorHex = doorByteVal.toString(16).padStart(2, '0').toUpperCase();
+
+      // Генерация пакетов CAN
+      const frames = [];
+
+      // 433: Двери и багажник BCM (передается каждые ~80мс)
+      frames.push(`433 8 00 00 ${doorHex} 00 00 00 00 00`);
+
+      // 201: Обороты двигателя
+      if (tick % 2 === 0) {
+        const rpmHex = (Math.round(this.rpm * 4) & 0xFFFF).toString(16).padStart(4, '0').toUpperCase();
+        frames.push(`201 8 ${rpmHex.substring(0, 2)} ${rpmHex.substring(2, 4)} 00 12 00 00 00 00`);
+      }
+
+      // 420: Скорость и одометр
+      if (tick % 3 === 0) {
+        const spdHex = Math.round(this.speed).toString(16).padStart(2, '0').toUpperCase();
+        frames.push(`420 8 00 ${spdHex} 12 34 56 00 00 00`);
+      }
+
+      // 430: Индикаторы приборной панели
+      if (tick % 4 === 0) {
+        frames.push(`430 8 00 ${doorByteVal > 0 ? '08' : '00'} 00 00 00 00 00 00`);
+      }
+
+      if (this.onData && frames.length > 0) {
+        this.onData(frames.join('\r\n') + '\r\n');
+      }
+    }, 90);
   }
 
   _processSimCommand(cmd) {

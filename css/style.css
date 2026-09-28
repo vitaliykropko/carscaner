@@ -961,6 +961,183 @@ body {
   to { opacity: 1; transform: translateX(0); }
 }
 
+/* =========================================================
+   CAN Bus Sniffer & Delta Analyzer Styles
+   ========================================================= */
+.can-toolbar {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.can-stats-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  background: #11141c;
+  border: 1px solid #232838;
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+
+.can-stat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.can-stat-item strong {
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+}
+
+.can-grid {
+  display: grid;
+  grid-template-columns: 1.8fr 1.2fr;
+  gap: 16px;
+}
+
+@media (max-width: 992px) {
+  .can-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.can-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+}
+
+.can-table-container {
+  overflow-x: auto;
+  max-height: 520px;
+  border-radius: var(--radius-sm);
+  border: 1px solid #1f2434;
+}
+
+.can-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.can-table th {
+  background: #151822;
+  color: var(--text-muted);
+  text-align: left;
+  padding: 10px 12px;
+  position: sticky;
+  top: 0;
+  border-bottom: 1px solid #272e42;
+  font-size: 0.76rem;
+  letter-spacing: 0.5px;
+}
+
+.can-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.can-table tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.can-id-cell {
+  font-weight: 800;
+  color: #00d2ff;
+  letter-spacing: 0.5px;
+}
+
+.can-bytes-wrap {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.can-byte {
+  display: inline-block;
+  min-width: 24px;
+  text-align: center;
+  padding: 2px 4px;
+  background: #0f1118;
+  border: 1px solid #232838;
+  border-radius: 4px;
+  color: #c9d5e8;
+  transition: all 0.2s ease;
+}
+
+.can-byte.changed {
+  background: #d6001c !important;
+  color: #ffffff !important;
+  border-color: #ff4d5a !important;
+  box-shadow: 0 0 10px rgba(214, 0, 28, 0.8);
+  font-weight: 800;
+}
+
+.can-byte.has-baseline {
+  border-bottom: 2px solid #00d2ff;
+}
+
+.can-delta-log {
+  flex: 1;
+  background: #090a0e;
+  border: 1px solid #1f2434;
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  max-height: 520px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+.delta-item {
+  padding: 5px 8px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.delta-item.door-event {
+  background: rgba(214, 0, 28, 0.15);
+  border-left: 3px solid #ff334b;
+}
+
+.delta-time {
+  color: #7a869a;
+  min-width: 85px;
+}
+
+.delta-id {
+  color: #00d2ff;
+  font-weight: 700;
+}
+
+.delta-desc {
+  color: #ff9100;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .app-header {
@@ -989,3 +1166,4 @@ body {
     flex: 1;
   }
 }
+

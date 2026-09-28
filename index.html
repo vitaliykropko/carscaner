@@ -71,6 +71,9 @@
     <div class="nav-tab" data-view="terminal">
       💻 Консоль AT
     </div>
+    <div class="nav-tab" data-view="canSniffer">
+      📡 CAN Сниффер (Двери)
+    </div>
     <div class="nav-tab" data-view="help">
       ℹ️ Инструкция
     </div>
@@ -311,6 +314,112 @@
       </div>
     </section>
 
+    <!-- VIEW: CAN Bus Sniffer & Delta Analyzer (Двери / Багажник) -->
+    <section id="viewCanSniffer" class="view-section">
+      <div class="can-toolbar">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+          <button id="startCanBtn" class="btn btn-primary">
+            ▶ Запустить перехват (AT MA)
+          </button>
+          <button id="stopCanBtn" class="btn btn-danger" style="display: none;">
+            ⏹ Остановить
+          </button>
+          <button id="setBaselineBtn" class="btn btn-secondary">
+            🎯 Зафиксировать базу (двери закрыты)
+          </button>
+          <button id="clearBaselineBtn" class="btn btn-secondary btn-sm" style="display: none;">
+            Сбросить базу
+          </button>
+        </div>
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+          <input type="text" id="canFilterInput" class="select-input" placeholder="Фильтр CAN ID (напр. 433)..." style="width: 170px; padding: 6px 10px; font-family: var(--font-mono); text-transform: uppercase;">
+          <button id="applyCanFilterBtn" class="btn btn-secondary btn-sm">Фильтр</button>
+          <button id="exportCanCsvBtn" class="btn btn-secondary btn-sm">📥 CSV</button>
+          <button id="exportCanTrcBtn" class="btn btn-secondary btn-sm">📥 TRC</button>
+          <button id="clearCanBtn" class="btn btn-danger btn-sm">Очистить</button>
+        </div>
+      </div>
+
+      <!-- Quick interactive controls for Demo mode -->
+      <div id="canDemoControls" class="can-toolbar" style="display: none; background: rgba(0, 136, 255, 0.08); border-color: rgba(0, 136, 255, 0.25);">
+        <div style="font-size: 0.85rem; color: #8acaff; font-weight: 600;">
+          🎮 Интерактивный тест симулятора Mazda 6 GH:
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button id="simToggleDriverDoor" class="btn btn-secondary btn-sm">🚪 Открыть/Закрыть дверь водителя</button>
+          <button id="simToggleTrunk" class="btn btn-secondary btn-sm">🚙 Открыть/Закрыть багажник</button>
+        </div>
+      </div>
+
+      <!-- CAN Stats -->
+      <div class="can-stats-bar">
+        <div class="can-stat-item">
+          <span>Статус:</span>
+          <strong id="canStatusText">Остановлен</strong>
+        </div>
+        <div class="can-stat-item">
+          <span>Уникальных CAN ID:</span>
+          <strong id="canUniqueCount">0</strong>
+        </div>
+        <div class="can-stat-item">
+          <span>Всего кадров:</span>
+          <strong id="canTotalCount">0</strong>
+        </div>
+        <div class="can-stat-item">
+          <span>Базовое состояние:</span>
+          <strong id="canBaselineStatus" style="color: var(--text-muted);">Не задано</strong>
+        </div>
+      </div>
+
+      <!-- Two-column CAN layout -->
+      <div class="can-grid">
+        <!-- Live CAN ID Table -->
+        <div class="can-card">
+          <div style="font-size: 0.92rem; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between;">
+            <span>Активные CAN ID (Пакеты в реальном времени)</span>
+            <span style="font-size: 0.76rem; color: var(--text-muted);">Красным подсвечены изменившиеся байты</span>
+          </div>
+          <div class="can-table-container">
+            <table class="can-table">
+              <thead>
+                <tr>
+                  <th>CAN ID</th>
+                  <th>Кадров</th>
+                  <th>Байты данных (0 ... 7)</th>
+                  <th>Описание узла</th>
+                </tr>
+              </thead>
+              <tbody id="canTableBody">
+                <tr>
+                  <td colspan="4" style="text-align: center; color: var(--text-dim); padding: 30px;">
+                    Перехват не запущен. Нажмите «Запустить перехват (AT MA)».
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Delta & Event Log -->
+        <div class="can-card">
+          <div style="font-size: 0.92rem; font-weight: 700; margin-bottom: 12px; display: flex; justify-content: space-between;">
+            <span>Журнал изменений (Срабатывания сигналов)</span>
+            <span id="deltaCountBadge" class="tab-badge" style="display: none;">0</span>
+          </div>
+          <div id="canDeltaLog" class="can-delta-log">
+            <div style="color: var(--text-dim); text-align: center; padding: 40px 10px;">
+              Здесь будут отображаться только те пакеты, в которых изменился хотя бы один бит.<br><br>
+              <strong>Инструкция:</strong><br>
+              1. Нажмите «Зафиксировать базу» при закрытых дверях.<br>
+              2. Откройте дверь водителя или багажник.<br>
+              3. Программа мгновенно зафиксирует изменившийся CAN ID и номер байта!
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- VIEW 5: Help & Mazda 6 GH Info -->
     <section id="viewHelp" class="view-section">
       <div class="help-grid">
@@ -420,6 +529,37 @@
       <div class="modal-footer">
         <button id="cancelClearBtn" class="btn btn-secondary">Отмена</button>
         <button id="confirmClearBtn" class="btn btn-danger">Подтвердить сброс</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: iOS Safari BLE Info -->
+  <div id="iosModal" class="modal-overlay">
+    <div class="modal-content">
+      <h3 class="modal-title" style="color: #ff9100;">📱 Особенность подключения на iPhone / iOS</h3>
+      <div class="modal-desc" style="text-align: left; font-size: 0.88rem; line-height: 1.6;">
+        <p><strong>Почему Safari пишет «устройство не поддерживается»?</strong></p>
+        <p style="color: #a0aec0; margin-top: 4px;">
+          Apple намеренно блокирует стандарт <em>Web Bluetooth</em> в браузере Safari и в Chrome на iOS из соображений политики безопасности.
+        </p>
+        <p style="margin-top: 10px;"><strong>Почему приложение Car Scanner работает?</strong></p>
+        <p style="color: #a0aec0; margin-top: 4px;">
+          Car Scanner — это нативное приложение из App Store на языке Swift/Obj-C. Оно использует закрытый системный фреймворк Apple <code>CoreBluetooth</code>, который доступен только нативным приложениям.
+        </p>
+        <div style="background: rgba(0, 136, 255, 0.12); border: 1px solid rgba(0, 136, 255, 0.3); border-radius: 8px; padding: 12px; margin-top: 14px;">
+          <strong style="color: #8acaff;">Как подключиться с iPhone прямо сейчас:</strong>
+          <ol style="margin-top: 6px; padding-left: 18px; color: #e2e8f0; font-size: 0.84rem;">
+            <li>Установите бесплатный браузер <strong>Bluefy (Web BLE Browser)</strong> из App Store. Он добавляет поддержку Web Bluetooth для веб-страниц.</li>
+            <li>Откройте в нем адрес: <br><code style="color: #00d2ff; user-select: all;">https://vitaliykropko.github.io/carscaner/</code></li>
+            <li>Нажмите <strong>«Web Bluetooth»</strong> — поиск адаптера заработает!</li>
+          </ol>
+        </div>
+      </div>
+      <div class="modal-footer" style="margin-top: 16px;">
+        <a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
+          📥 Открыть Bluefy в App Store
+        </a>
+        <button id="closeIosModalBtn" class="btn btn-secondary btn-sm">Понятно</button>
       </div>
     </div>
   </div>

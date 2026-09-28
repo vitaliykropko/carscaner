@@ -2,16 +2,19 @@
  * Mazda 6 GH OBD-II Scanner - Main Application Controller
  */
 
-import { Elm327Driver } from './elm327.js';
+import { Elm327Driver, isIos } from './elm327.js';
 import { ObdEngine } from './obd.js';
 import { GaugeRenderer, LiveChartRecorder } from './gauges.js';
 import { TelemetryLogger } from './logger.js';
+import { CanSniffer } from './can_sniffer.js';
 
 class Mazda6ScannerApp {
   constructor() {
     this.elm = new Elm327Driver();
     this.obd = new ObdEngine(this.elm);
     this.logger = new TelemetryLogger();
+    this.canSniffer = new CanSniffer(this.elm);
+    this.deltaCount = 0;
 
     this.chart = null;
     this.speedCanvas = null;
@@ -29,6 +32,7 @@ class Mazda6ScannerApp {
     this._initGaugesAndCharts();
     this._bindEvents();
     this._setupDriverListeners();
+    this._setupCanSnifferListeners();
     this._startGaugeAnimationLoop();
   }
 
@@ -96,6 +100,30 @@ class Mazda6ScannerApp {
     this.terminalInput = document.getElementById('terminalInput');
     this.clearTerminalBtn = document.getElementById('clearTerminalBtn');
 
+    // CAN Sniffer
+    this.startCanBtn = document.getElementById('startCanBtn');
+    this.stopCanBtn = document.getElementById('stopCanBtn');
+    this.setBaselineBtn = document.getElementById('setBaselineBtn');
+    this.clearBaselineBtn = document.getElementById('clearBaselineBtn');
+    this.canFilterInput = document.getElementById('canFilterInput');
+    this.applyCanFilterBtn = document.getElementById('applyCanFilterBtn');
+    this.exportCanCsvBtn = document.getElementById('exportCanCsvBtn');
+    this.exportCanTrcBtn = document.getElementById('exportCanTrcBtn');
+    this.clearCanBtn = document.getElementById('clearCanBtn');
+
+    this.canStatusText = document.getElementById('canStatusText');
+    this.canUniqueCount = document.getElementById('canUniqueCount');
+    this.canTotalCount = document.getElementById('canTotalCount');
+    this.canBaselineStatus = document.getElementById('canBaselineStatus');
+    this.canTableBody = document.getElementById('canTableBody');
+    this.canDeltaLog = document.getElementById('canDeltaLog');
+    this.deltaCountBadge = document.getElementById('deltaCountBadge');
+
+    // Demo CAN controls
+    this.canDemoControls = document.getElementById('canDemoControls');
+    this.simToggleDriverDoor = document.getElementById('simToggleDriverDoor');
+    this.simToggleTrunk = document.getElementById('simToggleTrunk');
+
     // Modals
     this.connModal = document.getElementById('connModal');
     this.closeModalBtn = document.getElementById('closeModalBtn');
@@ -106,6 +134,10 @@ class Mazda6ScannerApp {
     this.clearConfirmModal = document.getElementById('clearConfirmModal');
     this.cancelClearBtn = document.getElementById('cancelClearBtn');
     this.confirmClearBtn = document.getElementById('confirmClearBtn');
+
+    // iOS modal
+    this.iosModal = document.getElementById('iosModal');
+    this.closeIosModalBtn = document.getElementById('closeIosModalBtn');
   }
 
   _initPwa() {
@@ -181,8 +213,21 @@ class Mazda6ScannerApp {
 
     // Способы подключения
     this.btnConnectSerial.addEventListener('click', () => this._handleConnect('serial'));
-    this.btnConnectBle.addEventListener('click', () => this._handleConnect('bluetooth'));
+    this.btnConnectBle.addEventListener('click', () => {
+      if (isIos() && !('bluetooth' in navigator)) {
+        this.connModal.classList.remove('active');
+        this.iosModal.classList.add('active');
+        return;
+      }
+      this._handleConnect('bluetooth');
+    });
     this.btnConnectDemo.addEventListener('click', () => this._handleConnect('demo'));
+
+    if (this.closeIosModalBtn) {
+      this.closeIosModalBtn.addEventListener('click', () => {
+        this.iosModal.classList.remove('active');
+      });
+    }
 
     // Выбор метрики графика
     this.chartMetricSelect.addEventListener('change', (e) => {
@@ -314,6 +359,73 @@ class Mazda6ScannerApp {
         }
       });
     });
+
+    // CAN Sniffer события
+    if (this.startCanBtn) {
+      this.startCanBtn.addEventListener('click', () => this._handleStartCan());
+      this.stopCanBtn.addEventListener('click', () => this._handleStopCan());
+      this.setBaselineBtn.addEventListener('click', () => {
+        this.canSniffer.snapshotBaseline();
+        this.canBaselineStatus.textContent = `Зафиксировано (${this.canSniffer.framesMap.size} ID)`;
+        this.canBaselineStatus.style.color = '#00e676';
+        this.clearBaselineBtn.style.display = 'inline-flex';
+        this.showToast('Базовое состояние зафиксировано (все двери закрыты)', 'success');
+      });
+      this.clearBaselineBtn.addEventListener('click', () => {
+        this.canSniffer.clearBaseline();
+        this.canBaselineStatus.textContent = 'Не задано';
+        this.canBaselineStatus.style.color = 'var(--text-muted)';
+        this.clearBaselineBtn.style.display = 'none';
+        this.showToast('Базовое состояние сброшено', 'info');
+      });
+      this.applyCanFilterBtn.addEventListener('click', () => {
+        if (this.canSniffer.isRunning) {
+          this._handleStartCan();
+        }
+      });
+      this.exportCanCsvBtn.addEventListener('click', () => {
+        try {
+          this.canSniffer.exportLog('csv');
+          this.showToast('CAN лог экспортирован в CSV', 'success');
+        } catch (e) {
+          this.showToast(e.message, 'error');
+        }
+      });
+      this.exportCanTrcBtn.addEventListener('click', () => {
+        try {
+          this.canSniffer.exportLog('trc');
+          this.showToast('CAN лог экспортирован в TRC', 'success');
+        } catch (e) {
+          this.showToast(e.message, 'error');
+        }
+      });
+      this.clearCanBtn.addEventListener('click', () => {
+        this.canSniffer.clearHistory();
+        this.deltaCount = 0;
+        this.canUniqueCount.textContent = '0';
+        this.canTotalCount.textContent = '0';
+        this.deltaCountBadge.style.display = 'none';
+        this.canTableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-dim); padding: 30px;">Лог очищен.</td></tr>`;
+        this.canDeltaLog.innerHTML = `<div style="color: var(--text-dim); text-align: center; padding: 40px 10px;">Журнал очищен.</div>`;
+        this.showToast('CAN история очищена', 'info');
+      });
+
+      // Интерактивные тесты для режима демо
+      this.simToggleDriverDoor.addEventListener('click', () => {
+        if (this.elm && this.elm.transport && this.elm.transport.toggleDoor) {
+          this.elm.transport.toggleDoor('driver');
+          const isOpen = this.elm.transport.doorDriverOpen;
+          this.showToast(`Дверь водителя ${isOpen ? 'ОТКРЫТА 🚪' : 'ЗАКРЫТА 🔒'}`, isOpen ? 'error' : 'success');
+        }
+      });
+      this.simToggleTrunk.addEventListener('click', () => {
+        if (this.elm && this.elm.transport && this.elm.transport.toggleDoor) {
+          this.elm.transport.toggleDoor('trunk');
+          const isOpen = this.elm.transport.trunkOpen;
+          this.showToast(`Багажник ${isOpen ? 'ОТКРЫТ 🚙' : 'ЗАКРЫТ 🔒'}`, isOpen ? 'error' : 'success');
+        }
+      });
+    }
   }
 
   _setupDriverListeners() {
@@ -334,12 +446,19 @@ class Mazda6ScannerApp {
         this.disconnectBtn.style.display = 'inline-flex';
         this.voltageBadge.style.display = 'flex';
         this.showToast(`Успешное подключение к ELM327 (${typeLabel})`, 'success');
+
+        if (details.type === 'demo' && this.canDemoControls) {
+          this.canDemoControls.style.display = 'flex';
+        } else if (this.canDemoControls) {
+          this.canDemoControls.style.display = 'none';
+        }
       } else if (state === 'disconnected') {
         this.statusText.textContent = 'Отключен';
         this.connectBtn.style.display = 'inline-flex';
         this.connectBtn.disabled = false;
         this.disconnectBtn.style.display = 'none';
         this.voltageBadge.style.display = 'none';
+        if (this.canDemoControls) this.canDemoControls.style.display = 'none';
         this.showToast('Адаптер отключен', 'info');
       } else if (state === 'error') {
         this.statusText.textContent = 'Ошибка';
@@ -347,6 +466,122 @@ class Mazda6ScannerApp {
         this.showToast(`Ошибка подключения: ${details.error}`, 'error');
       }
     };
+  }
+
+  _setupCanSnifferListeners() {
+    let lastRenderTime = 0;
+
+    this.canSniffer.onFrameReceived = (item, record) => {
+      this.canUniqueCount.textContent = this.canSniffer.framesMap.size;
+      this.canTotalCount.textContent = this.canSniffer.history.length;
+
+      // Если в кадре есть изменение
+      if (record.changed) {
+        this.deltaCount++;
+        this.deltaCountBadge.textContent = this.deltaCount;
+        this.deltaCountBadge.style.display = 'inline-block';
+
+        const isDoor = record.id === '433' || record.id === '430' || record.id === '4B0';
+        const div = document.createElement('div');
+        div.className = `delta-item ${isDoor ? 'door-event' : ''}`;
+
+        let doorHint = '';
+        if (record.id === '433') {
+          doorHint = ' [Сигнал концевиков дверей/багажника!]';
+        }
+
+        div.innerHTML = `
+          <span class="delta-time">${record.time}</span>
+          <span class="delta-id">0x${record.id}</span>
+          <span class="delta-desc">${record.desc || 'CAN Frame'}${doorHint}:</span>
+          <span style="font-weight: bold; color: #fff;">${record.data}</span>
+        `;
+
+        if (this.canDeltaLog.firstElementChild && this.canDeltaLog.firstElementChild.innerText.includes('Здесь будут отображаться')) {
+          this.canDeltaLog.innerHTML = '';
+        }
+
+        this.canDeltaLog.prepend(div);
+        if (this.canDeltaLog.children.length > 150) {
+          this.canDeltaLog.removeChild(this.canDeltaLog.lastChild);
+        }
+      }
+
+      // Троттлинг таблицы (8-10 кадров/с для отзывчивости интерфейса)
+      const now = performance.now();
+      if (now - lastRenderTime > 110) {
+        lastRenderTime = now;
+        this._renderCanTable();
+      }
+    };
+  }
+
+  _renderCanTable() {
+    const filter = this.canFilterInput.value.trim().toUpperCase();
+    const rows = [];
+
+    for (const [id, frame] of this.canSniffer.framesMap.entries()) {
+      if (filter && !id.includes(filter)) continue;
+
+      const isChanged = frame.deltaHighlightTime > Date.now();
+      const bytesHtml = frame.lastData.map((byte, idx) => {
+        const isByteChanged = frame.changedIndices.has(idx) && isChanged;
+        const hasBase = frame.baselineData && frame.baselineData[idx] !== undefined;
+        return `<span class="can-byte ${isByteChanged ? 'changed' : ''} ${hasBase ? 'has-baseline' : ''}">${byte}</span>`;
+      }).join('');
+
+      rows.push(`
+        <tr>
+          <td class="can-id-cell">0x${id}</td>
+          <td>${frame.count}</td>
+          <td><div class="can-bytes-wrap">${bytesHtml}</div></td>
+          <td style="color: var(--text-muted); font-size: 0.76rem;">${frame.desc || '—'}</td>
+        </tr>
+      `);
+    }
+
+    if (rows.length > 0) {
+      this.canTableBody.innerHTML = rows.join('');
+    }
+  }
+
+  async _handleStartCan() {
+    if (!this.elm.isConnected) {
+      this.showToast('Сначала подключите ELM327', 'error');
+      return;
+    }
+
+    // Приостанавливаем OBD опрос датчиков чтобы не конфликтовать с мониторингом CAN
+    this.obd.stopPolling();
+
+    const filter = this.canFilterInput.value.trim();
+    this.startCanBtn.style.display = 'none';
+    this.stopCanBtn.style.display = 'inline-flex';
+    this.canStatusText.textContent = 'Перехват активен...';
+    this.canStatusText.style.color = '#00e676';
+
+    try {
+      await this.canSniffer.start(filter);
+      this.showToast(`CAN перехват запущен${filter ? ' (Фильтр: 0x' + filter + ')' : ''}`, 'success');
+    } catch (e) {
+      this.showToast(`Ошибка CAN: ${e.message}`, 'error');
+      this._handleStopCan();
+    }
+  }
+
+  async _handleStopCan() {
+    await this.canSniffer.stop();
+    this.startCanBtn.style.display = 'inline-flex';
+    this.stopCanBtn.style.display = 'none';
+    this.canStatusText.textContent = 'Остановлен';
+    this.canStatusText.style.color = 'var(--text-main)';
+    this.showToast('CAN перехват остановлен', 'info');
+
+    // Если открыта вкладка приборов, возобновляем OBD опрос
+    const activeTab = document.querySelector('.nav-tab.active');
+    if (activeTab && activeTab.dataset.view === 'dashboard' && this.elm.isConnected) {
+      this.obd.startPolling((data) => this._onTelemetryReceived(data));
+    }
   }
 
   async _handleConnect(type) {
