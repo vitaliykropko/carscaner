@@ -1,0 +1,32 @@
+{
+  "name": "Mazda 6 GH OBD-II Scanner",
+  "short_name": "Mazda6 Scan",
+  "description": "Прогрессивное веб-приложение (PWA) для диагностики, чтения ошибок и параметров Mazda 6 GH через ELM327",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f1117",
+  "theme_color": "#c40e22",
+  "categories": ["utilities", "automotive"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

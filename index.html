@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mazda 6 GH | OBD-II Scanner PWA</title>
+  
+  <!-- PWA & Mobile Meta Tags -->
+  <meta name="theme-color" content="#c40e22">
+  <meta name="description" content="PWA для диагностики и чтения логов Mazda 6 GH через ELM327">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Mazda6 Scan">
+  
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="icons/favicon.svg">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="brand">
+      <img src="icons/icon.svg" alt="Mazda 6 GH" class="brand-icon">
+      <div>
+        <div class="brand-title">MAZDA 6 GH</div>
+        <div class="brand-sub">OBD-II CAN Diagnostic</div>
+      </div>
+    </div>
+
+    <div class="header-status">
+      <div id="statusBadge" class="status-badge">
+        <span class="status-indicator"></span>
+        <span id="statusText">Отключен</span>
+      </div>
+      <div id="voltageBadge" class="status-badge" style="display: none;">
+        <span>🔋</span>
+        <span id="voltageText">12.0V</span>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <button id="pwaInstallBtn" class="btn btn-secondary btn-sm" style="display: none;">
+        📱 Установить
+      </button>
+      <button id="connectBtn" class="btn btn-primary">
+        ⚡ Подключить
+      </button>
+      <button id="disconnectBtn" class="btn btn-danger btn-sm" style="display: none;">
+        Отключить
+      </button>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="nav-tabs">
+    <div class="nav-tab active" data-view="dashboard">
+      🏎️ Приборы
+    </div>
+    <div class="nav-tab" data-view="diagnostics">
+      🔍 Ошибки (DTC)
+      <span id="dtcBadgeCount" class="tab-badge" style="display: none;">0</span>
+    </div>
+    <div class="nav-tab" data-view="logger">
+      📊 Запись логов
+      <span id="recDot" style="display:none; color: #ff334b; font-size: 0.7rem;">● REC</span>
+    </div>
+    <div class="nav-tab" data-view="terminal">
+      💻 Консоль AT
+    </div>
+    <div class="nav-tab" data-view="help">
+      ℹ️ Инструкция
+    </div>
+  </nav>
+
+  <!-- Main Content Area -->
+  <main class="main-content">
+
+    <!-- VIEW 1: Dashboard (Панель приборов) -->
+    <section id="viewDashboard" class="view-section active">
+      <!-- Big Analog Gauges -->
+      <div class="gauges-grid">
+        <div class="gauge-card">
+          <div class="gauge-title">Скорость автомобиля</div>
+          <canvas id="speedGauge" class="gauge-canvas" width="280" height="280"></canvas>
+        </div>
+        <div class="gauge-card">
+          <div class="gauge-title">Обороты двигателя (RPM)</div>
+          <canvas id="rpmGauge" class="gauge-canvas" width="280" height="280"></canvas>
+        </div>
+      </div>
+
+      <!-- Telemetry Parameters Grid -->
+      <div class="telemetry-grid">
+        <div class="param-card">
+          <div class="param-label">
+            <span>Охлаждающая жидкость</span>
+            <span>🌡️</span>
+          </div>
+          <div class="param-value"><span id="valCoolant">--</span><span class="param-unit">°C</span></div>
+          <div class="param-progress"><div id="barCoolant" class="param-progress-bar"></div></div>
+        </div>
+
+        <div class="param-card">
+          <div class="param-label">
+            <span>Расход воздуха (MAF)</span>
+            <span>💨</span>
+          </div>
+          <div class="param-value"><span id="valMaf">--</span><span class="param-unit">г/с</span></div>
+          <div class="param-progress"><div id="barMaf" class="param-progress-bar"></div></div>
+        </div>
+
+        <div class="param-card">
+          <div class="param-label">
+            <span>Положение дросселя</span>
+            <span>⚡</span>
+          </div>
+          <div class="param-value"><span id="valThrottle">--</span><span class="param-unit">%</span></div>
+          <div class="param-progress"><div id="barThrottle" class="param-progress-bar"></div></div>
+        </div>
+
+        <div class="param-card">
+          <div class="param-label">
+            <span>Нагрузка двигателя</span>
+            <span>⚙️</span>
+          </div>
+          <div class="param-value"><span id="valLoad">--</span><span class="param-unit">%</span></div>
+          <div class="param-progress"><div id="barLoad" class="param-progress-bar"></div></div>
+        </div>
+
+        <div class="param-card">
+          <div class="param-label">
+            <span>Температура впуска</span>
+            <span>❄️</span>
+          </div>
+          <div class="param-value"><span id="valIat">--</span><span class="param-unit">°C</span></div>
+          <div class="param-progress"><div id="barIat" class="param-progress-bar"></div></div>
+        </div>
+
+        <div class="param-card">
+          <div class="param-label">
+            <span>Коррекция STFT</span>
+            <span>🎯</span>
+          </div>
+          <div class="param-value"><span id="valStft">--</span><span class="param-unit">%</span></div>
+          <div class="param-progress"><div id="barStft" class="param-progress-bar"></div></div>
+        </div>
+
+        <div class="param-card">
+          <div class="param-label">
+            <span>Коррекция LTFT</span>
+            <span>📈</span>
+          </div>
+          <div class="param-value"><span id="valLtft">--</span><span class="param-unit">%</span></div>
+          <div class="param-progress"><div id="barLtft" class="param-progress-bar"></div></div>
+        </div>
+
+        <div class="param-card">
+          <div class="param-label">
+            <span>Уровень топлива</span>
+            <span>⛽</span>
+          </div>
+          <div class="param-value"><span id="valFuel">--</span><span class="param-unit">%</span></div>
+          <div class="param-progress"><div id="barFuel" class="param-progress-bar"></div></div>
+        </div>
+      </div>
+
+      <!-- Realtime Strip-Chart -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-title">График параметра в реальном времени</div>
+          <div class="chart-controls">
+            <select id="chartMetricSelect" class="chart-select">
+              <option value="rpm">Обороты двигателя (RPM)</option>
+              <option value="speed">Скорость (км/ч)</option>
+              <option value="coolant">Температура ОЖ (°C)</option>
+              <option value="maf">Расход воздуха MAF (г/с)</option>
+              <option value="throttle">Дроссель (%)</option>
+              <option value="load">Нагрузка на двигатель (%)</option>
+            </select>
+            <button id="chartClearBtn" class="btn btn-secondary btn-sm">Очистить</button>
+          </div>
+        </div>
+        <canvas id="liveChart" class="chart-canvas"></canvas>
+      </div>
+    </section>
+
+    <!-- VIEW 2: Diagnostics & DTCs (Диагностика ошибок) -->
+    <section id="viewDiagnostics" class="view-section">
+      <div class="dtc-toolbar">
+        <div class="dtc-module-select">
+          <label for="moduleSelect" style="font-size: 0.88rem; color: var(--text-muted);">Блок управления:</label>
+          <select id="moduleSelect" class="select-input">
+            <option value="7E0">PCM: Двигатель (0x7E0)</option>
+            <option value="7E1">TCM: Коробка передач АКПП (0x7E1)</option>
+            <option value="760">ABS / DSC: Тормозная система (0x760)</option>
+            <option value="730">EPS: Электроусилитель руля (0x730)</option>
+            <option value="720">IC: Приборная панель (0x720)</option>
+            <option value="726">BCM: Кузовная электроника (0x726)</option>
+            <option value="AUTO">Стандартный OBD-II (Все блоки)</option>
+          </select>
+        </div>
+
+        <div class="dtc-actions">
+          <button id="scanDtcBtn" class="btn btn-primary">
+            🔍 Сканировать ошибки
+          </button>
+          <button id="clearDtcBtn" class="btn btn-danger">
+            🧹 Сбросить ошибки (Mode 04)
+          </button>
+          <button id="exportDtcBtn" class="btn btn-secondary">
+            📄 Экспорт отчета
+          </button>
+        </div>
+      </div>
+
+      <!-- DTC Results List -->
+      <div id="dtcList" class="dtc-list">
+        <div class="dtc-empty">
+          <div class="dtc-empty-icon">🚗</div>
+          <h3>Диагностика не выполнена</h3>
+          <p style="color: var(--text-muted); margin-top: 6px;">Подключите ELM327 к разъему OBD-II Mazda 6 GH и нажмите «Сканировать ошибки».</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 3: Telemetry Logger & Export -->
+    <section id="viewLogger" class="view-section">
+      <div class="logs-card">
+        <div class="logs-toolbar">
+          <div class="logs-stats">
+            <div>Статус: <strong id="logStatusText">Остановлен</strong></div>
+            <div>Записей: <strong id="logCount">0</strong></div>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button id="toggleRecordBtn" class="btn btn-primary">
+              ⏺ Начать запись
+            </button>
+            <button id="exportCsvBtn" class="btn btn-secondary">
+              📥 Экспорт CSV (Excel)
+            </button>
+            <button id="exportJsonBtn" class="btn btn-secondary">
+              📥 Экспорт JSON
+            </button>
+            <button id="clearLogBtn" class="btn btn-danger btn-sm">
+              Очистить
+            </button>
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table class="telemetry-table">
+            <thead>
+              <tr>
+                <th>Время</th>
+                <th>RPM</th>
+                <th>Скорость</th>
+                <th>ОЖ (°C)</th>
+                <th>MAF (г/с)</th>
+                <th>Дроссель</th>
+                <th>Нагрузка</th>
+                <th>STFT (%)</th>
+                <th>LTFT (%)</th>
+                <th>АКБ (В)</th>
+              </tr>
+            </thead>
+            <tbody id="telemetryTableBody">
+              <tr>
+                <td colspan="10" style="text-align: center; color: var(--text-dim); padding: 30px;">
+                  Записи лога отсутствуют. Нажмите «Начать запись» во время движения или работы двигателя.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 4: Terminal Console -->
+    <section id="viewTerminal" class="view-section">
+      <div class="terminal-card">
+        <div class="terminal-header">
+          <div style="font-weight: 700; font-size: 0.9rem;">Прямой доступ к ELM327 (AT & PID Terminal)</div>
+          <button id="clearTerminalBtn" class="btn btn-secondary btn-sm">Очистить вывод</button>
+        </div>
+
+        <div class="quick-commands">
+          <span style="font-size: 0.75rem; color: var(--text-muted); align-self: center;">Команды:</span>
+          <button class="chip" data-cmd="AT RV">AT RV (Вольтметр)</button>
+          <button class="chip" data-cmd="AT DP">AT DP (Протокол)</button>
+          <button class="chip" data-cmd="0100">0100 (Поддержка PID)</button>
+          <button class="chip" data-cmd="010C">010C (RPM)</button>
+          <button class="chip" data-cmd="010D">010D (Скорость)</button>
+          <button class="chip" data-cmd="03">03 (Коды DTC)</button>
+          <button class="chip" data-cmd="07">07 (Ожидающие DTC)</button>
+          <button class="chip" data-cmd="AT SH 7E0">AT SH 7E0 (PCM)</button>
+          <button class="chip" data-cmd="AT SH 760">AT SH 760 (ABS)</button>
+        </div>
+
+        <div id="terminalLogs" class="terminal-logs">
+          <div class="terminal-line info">Готов к приему команд. Введите команду в поле ниже.</div>
+        </div>
+
+        <form id="terminalForm" class="terminal-input-wrap">
+          <input type="text" id="terminalInput" class="terminal-input" placeholder="Введите команду (например: AT RV или 010C)..." autocomplete="off">
+          <button type="submit" class="btn btn-primary">Отправить</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- VIEW 5: Help & Mazda 6 GH Info -->
+    <section id="viewHelp" class="view-section">
+      <div class="help-grid">
+        <div class="help-card">
+          <h3>🔌 Подключение к Mazda 6 GH</h3>
+          <p>Разъем <strong>OBD-II (16 pin)</strong> в Mazda 6 GH расположен под рулевой колонкой слева, чуть выше рычага открывания капота.</p>
+          <ol style="margin-top: 10px;">
+            <li>Вставьте адаптер ELM327 в разъем OBD-II при выключенном зажигании.</li>
+            <li>Включите зажигание автомобиля (положение ON) или запустите двигатель.</li>
+            <li>Если адаптер Bluetooth: выполните сопряжение в настройках Bluetooth вашей системы (PIN: обычно <strong>1234</strong> или <strong>0000</strong>).</li>
+            <li>В данном приложении нажмите кнопку <strong>«Подключить»</strong> и выберите способ соединения.</li>
+          </ol>
+        </div>
+
+        <div class="help-card">
+          <h3>⚡ Способы подключения в браузере</h3>
+          <ul>
+            <li>
+              <strong>Web Serial (USB или виртуальный COM-порт Bluetooth):</strong>
+              <p>Лучший вариант для Windows / Ноутбука. Chrome/Edge подключается напрямую к виртуальному COM-порту спаренного Bluetooth ELM327 или USB-кабелю (CH340/FTDI).</p>
+            </li>
+            <li>
+              <strong>Web Bluetooth (BLE 4.0+):</strong>
+              <p>Для беспроводных адаптеров с поддержкой Bluetooth Low Energy (Vgate iCar Pro BLE, Veepeak, Kingbolen BLE) на смартфонах Android, Mac и Windows.</p>
+            </li>
+            <li>
+              <strong>Демо-режим (Симулятор):</strong>
+              <p>Позволяет протестировать весь интерфейс, графики, ошибки и экспорт логов прямо сейчас без реального подключения к машине!</p>
+            </li>
+          </ul>
+        </div>
+
+        <div class="help-card">
+          <h3>🧠 Блоки управления Mazda 6 GH</h3>
+          <p>В Mazda 6 GH используется шина <strong>HS-CAN (500 кбит/с)</strong>. Программа умеет переключать адресные заголовки блоков через команду <span class="badge-tag">AT SH &lt;ID&gt;</span>:</p>
+          <ul style="margin-top: 10px;">
+            <li><span class="badge-tag">0x7E0</span> — Блок управления двигателем (PCM)</li>
+            <li><span class="badge-tag">0x7E1</span> — Блок управления АКПП (TCM)</li>
+            <li><span class="badge-tag">0x760</span> — Антиблокировочная система и курсовая устойчивость (ABS / DSC)</li>
+            <li><span class="badge-tag">0x730</span> — Электроусилитель руля (EPS)</li>
+            <li><span class="badge-tag">0x720</span> — Приборная панель (IC)</li>
+            <li><span class="badge-tag">0x726</span> — Блок комфорта и кузова (BCM)</li>
+          </ul>
+        </div>
+
+        <div class="help-card">
+          <h3>🛠️ Типичные неисправности Mazda 6 GH</h3>
+          <ul style="margin-top: 10px;">
+            <li><strong>P0421</strong> — Эффективность катализатора ниже порога (Банк 1). Износ верхнего нейтрализатора на моторах 2.0/2.5 л.</li>
+            <li><strong>P2187 / P2177</strong> — Бедная смесь. Чаще всего вызвана трещиной в резиновой гофре впуска или залипанием клапана продувки адсорбера (EVAP).</li>
+            <li><strong>P0328</strong> — Высокий уровень сигнала датчика детонации. Известная деградация датчика под впускным коллектором.</li>
+            <li><strong>C1278</strong> — Ошибка датчика угла руля (SAS) после отключения аккумулятора. Лечится поворотом руля до упора влево и вправо.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal: Select Connection Method -->
+  <div id="connModal" class="modal-overlay">
+    <div class="modal-content">
+      <h3 class="modal-title">Подключение к ELM327</h3>
+      <p class="modal-desc">Выберите протокол взаимодействия вашего устройства с адаптером:</p>
+
+      <div class="connection-options">
+        <button id="btnConnectSerial" class="conn-option-btn">
+          <div class="conn-icon">🔌</div>
+          <div class="conn-text">
+            <h4>Web Serial (Рекомендуется для ПК / USB / BT COM)</h4>
+            <p>Прямой доступ к COM-портам, Bluetooth SPP и USB-кабелям (38400 бод)</p>
+          </div>
+        </button>
+
+        <button id="btnConnectBle" class="conn-option-btn">
+          <div class="conn-icon">📶</div>
+          <div class="conn-text">
+            <h4>Web Bluetooth (BLE 4.0+)</h4>
+            <p>Для беспроводных адаптеров Vgate, Veepeak, BLE ELM327 (Android / iOS / ПК)</p>
+          </div>
+        </button>
+
+        <button id="btnConnectDemo" class="conn-option-btn">
+          <div class="conn-icon">🎮</div>
+          <div class="conn-text">
+            <h4>Демо-режим (Симулятор Mazda 6 GH)</h4>
+            <p>Протестировать живые приборы, ошибки и запись логов без подключения к авто</p>
+          </div>
+        </button>
+      </div>
+
+      <div class="modal-footer">
+        <button id="closeModalBtn" class="btn btn-secondary">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Confirm Clear DTCs -->
+  <div id="clearConfirmModal" class="modal-overlay">
+    <div class="modal-content">
+      <h3 class="modal-title" style="color: #ff4d5a;">⚠️ Сбросить ошибки (Mode 04)?</h3>
+      <p class="modal-desc">
+        Будут очищены все сохраненные коды неисправностей (DTC), погаснет индикатор Check Engine и сбросятся накопленные топливные адаптации (LTFT) в блоке управления двигателем.
+        <br><br>
+        <strong>Убедитесь, что зажигание включено, а двигатель заглушен!</strong>
+      </p>
+      <div class="modal-footer">
+        <button id="cancelClearBtn" class="btn btn-secondary">Отмена</button>
+        <button id="confirmClearBtn" class="btn btn-danger">Подтвердить сброс</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Main Application Script (ES Module) -->
+  <script type="module" src="js/app.js"></script>
+
+</body>
+</html>
